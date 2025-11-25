@@ -676,7 +676,7 @@ async function refreshPresence(){
     if(!seen || inactive) setStudentCache(student, {offline:true});
   }
 
-  // Render cards
+ // Render grid
   const grid = $('#screenGrid'); grid.innerHTML='';
   const allIds = Array.from(new Set([...Object.keys(studentCache), ...Object.keys(pres)])).sort();
 
@@ -684,51 +684,23 @@ async function refreshPresence(){
     const info = pres[student] || {};
     const cache = studentCache[student] || {};
     const isOffline = !!cache.offline;
-    const isPaused = !!cache.paused;
 
-    const card=document.createElement('div');
+    const card=document.createElement('div'); 
     card.className='card ' + (isOffline ? 'offline' : 'online');
-    card.style.position='relative';
 
-    // --- Screenshot ---
-    const shot=document.createElement('img');
-    shot.className='shot';
-    shot.src = (!isOffline && info.screenshot) ? info.screenshot : (cache.screenshot||'');
+    const shot=document.createElement('img'); 
+    shot.className='shot'; 
+    // choose live if online else cached
+    const src = (!isOffline && info.screenshot) ? info.screenshot : (cache.screenshot||'');
+    if(src) shot.src = src;
     shot.alt = student + ' screen';
-    shot.onclick = ()=> openMonitor(student);
+    shot.onclick = ()=> openMonitor(student); // NEW: browser-like monitor on click
     card.appendChild(shot);
 
-    // --- Overlay Buttons ---
-    const overlay=document.createElement('div');
-    overlay.className='card-overlay';
-    overlay.style.cssText='position:absolute;top:6px;right:6px;display:flex;gap:6px;opacity:0;transition:opacity .2s';
-    card.onmouseenter=()=>overlay.style.opacity='1';
-    card.onmouseleave=()=>overlay.style.opacity='0';
-
-    const lockBtn=document.createElement('button');
-    lockBtn.textContent=isPaused?'🔓 Unlock':'🔒 Lock';
-    lockBtn.style.cssText=`background:${isPaused?'#d92d20':'rgba(16,24,40,.85)'};color:#fff;border:none;border-radius:6px;padding:4px 6px;font-size:12px;cursor:pointer;`;
-
-    lockBtn.onclick=async(e)=>{
-      e.stopPropagation();
-      const newVal=!isPaused;
-      await fetch('/api/student/set',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({student, paused:newVal})
-      });
-      cache.paused=newVal;
-      lockBtn.textContent=newVal?'🔓 Unlock':'🔒 Lock';
-      lockBtn.style.background=newVal?'#d92d20':'rgba(16,24,40,.85)';
-      toast(student+' '+(newVal?'internet locked':'internet unlocked'));
-    };
-    overlay.appendChild(lockBtn);
-    card.appendChild(overlay);
-
-    // --- Student info row ---
-    const r1=document.createElement('div');
+    // top row
+    const r1=document.createElement('div'); 
     r1.className='status';
-    r1.innerHTML=`
+    r1.innerHTML = `
       <div class="row">
         <b>${escapeHtml(student)}</b>
         <span class="pill mini">${escapeHtml((info.tab && info.tab.title) || (isOffline?'Waiting for student activity…':'') )}</span>
@@ -737,34 +709,35 @@ async function refreshPresence(){
     `;
     card.appendChild(r1);
 
-    // --- Tab thumbnails ---
-    const bar=document.createElement('div'); 
+    // thumb bar (per-tab last photos)
+    const bar = document.createElement('div'); 
     bar.className='thumbbar';
-    const tabs=(info.tabs||[]).slice(0,8);
+    const tabs = (info.tabs||[]).slice(0,8);
     tabs.forEach(t=>{
       const img=document.createElement('img');
-      const ts=cache.tabshots && cache.tabshots[String(t.id)];
-      img.src=(ts && ts.dataUrl) || (t.favIconUrl || '');
-      img.title=t.title || t.url || '';
+      const ts = cache.tabshots && cache.tabshots[String(t.id)];
+      const thumb = (typeof ts === 'string') ? ts : (ts && ts.dataUrl);
+      img.src = thumb || (t.favIconUrl || '');
+      img.title = t.title || t.url || '';
       bar.appendChild(img);
     });
+    // also show cached shots for tabs that might not be in info (if offline)
     if(isOffline && cache.tabshots){
-      Object.entries(cache.tabshots).slice(0,8).forEach(([_,meta])=>{
+      const extra = Object.entries(cache.tabshots).slice(0,8);
+      extra.forEach(([_, meta])=>{
         const img=document.createElement('img');
-        img.src=meta.dataUrl||'';
-        img.title=meta.title||'';
+        const thumb = (typeof meta === 'string') ? meta : (meta && meta.dataUrl);
+        img.src = thumb || '';
+        img.title = (typeof meta === 'object' && meta && meta.title) ? meta.title : '';
         bar.appendChild(img);
       });
     }
     card.appendChild(bar);
 
-    // --- Actions ---
+    // actions
     const actions=document.createElement('div'); 
-    actions.className='row'; 
-    actions.style.justifyContent='flex-end'; 
-    actions.style.gap='6px';
-    const perStu=document.createElement('button'); 
-    perStu.className='btn secondary'; perStu.textContent='Controls';
+    actions.className='row'; actions.style.justifyContent='flex-end'; actions.style.gap='6px';
+    const perStu=document.createElement('button'); perStu.className='btn secondary'; perStu.textContent='Controls';
     perStu.onclick=()=>{ $('#perStudentDlg').showModal(); $('#studentSelect').value=student; };
     const view=document.createElement('button'); view.className='btn'; view.textContent='View';
     view.onclick=()=> openMonitor(student);
@@ -774,7 +747,6 @@ async function refreshPresence(){
     grid.appendChild(card);
   });
 }
-
 function timeAgo(ts){
   if(!ts) return 'a while ago';
   const s = Math.max(1, Math.floor((Date.now()-ts)/1000));
@@ -782,8 +754,7 @@ function timeAgo(ts){
   const m = Math.floor(s/60); if(m<60) return m+'m ago';
   const h = Math.floor(m/60); return h+'h ago';
 }
-
-async function loadYouTubeRules(){
+refreshPresence(); setInterval(refreshPresence, 8000);async function loadYouTubeRules(){
   const res=await fetch('/api/youtube_rules');
   if(!res.ok) return;
   const r=await res.json();
@@ -792,6 +763,7 @@ async function loadYouTubeRules(){
   document.getElementById('ytAllowList').value=(r.allow||[]).join('\n');
   document.getElementById('ytAllowMode').checked=!!r.allow_mode;
 }
+
 loadYouTubeRules();
 
 /* -----------------------------------------------------------
