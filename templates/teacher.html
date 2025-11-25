@@ -167,6 +167,62 @@
   .thumbbar{display:flex; gap:6px; padding-top:6px; overflow:hidden}
   .thumbbar img{width:22px; height:22px; border-radius:4px; border:1px solid #e5e8f0; background:#fff}
   .card .status{display:flex; justify-content:space-between; align-items:center}
+  /* DM pane inside monitor */
+  .dm-pane{
+    border-top:1px solid var(--border);
+    background:#fff;
+    display:flex;
+    flex-direction:column;
+  }
+  .dm-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:10px 12px;
+    border-bottom:1px solid var(--border);
+    background:#f7f9fc;
+    font-weight:700;
+  }
+  .dm-thread{
+    flex:1;
+    overflow:auto;
+    padding:12px;
+  }
+  .dm-msg{
+    margin:6px 0;
+    max-width:88%;
+  }
+  .dm-me{
+    margin-left:auto;
+    text-align:right;
+  }
+  .dm-bubble{
+    display:inline-block;
+    padding:8px 10px;
+    border-radius:10px;
+    background:#eef3ff;
+    border:1px solid var(--border);
+  }
+  .dm-me .dm-bubble{
+    background:#dbeafe;
+  }
+  .dm-meta{
+    font-size:11px;
+    color:#667085;
+    margin-top:2px;
+  }
+  .dm-compose{
+    display:flex;
+    gap:8px;
+    padding:10px;
+    border-top:1px solid var(--border);
+  }
+  .dm-compose textarea{
+    flex:1;
+    resize:vertical;
+    min-height:42px;
+  }
+
 </style>
 </head>
 <body>
@@ -418,6 +474,14 @@
       <div class="tabstrip" id="monTabstrip"></div>
       <div class="monitor-canvas">
         <img id="monPreview" src="" alt="preview">
+      </div>
+      <div class="dm-pane">
+        <div class="dm-head">Direct Chat</div>
+        <div class="dm-thread" id="dmThread"><div class="muted">No messages yet.</div></div>
+        <div class="dm-compose">
+          <textarea id="dmInput2" placeholder="Type a private message"></textarea>
+          <button class="btn" id="dmSend2">Send</button>
+        </div>
       </div>
     </div>
   </div>
@@ -711,6 +775,14 @@ async function refreshPresence(){
   });
 }
 
+function timeAgo(ts){
+  if(!ts) return 'a while ago';
+  const s = Math.max(1, Math.floor((Date.now()-ts)/1000));
+  if(s<60) return s+'s ago';
+  const m = Math.floor(s/60); if(m<60) return m+'m ago';
+  const h = Math.floor(m/60); return h+'h ago';
+}
+
 async function loadYouTubeRules(){
   const res=await fetch('/api/youtube_rules');
   if(!res.ok) return;
@@ -876,6 +948,75 @@ $('#dmSend').onclick=async()=>{
   $('#dmDlg').close(); toast('DM sent');
 };
 
+
+/* -------- Direct Chat (DM) in monitor -------- */
+let DM = { timer:null, last:0 };
+
+function formatTime(ts){
+  try{ return new Date(ts*1000).toLocaleTimeString(); }catch(_){ return ''; }
+}
+
+function renderDM(msgs){
+  const wrap = $('#dmThread');
+  wrap.innerHTML = '';
+  if(!msgs || !msgs.length){
+    wrap.innerHTML = '<div class="muted">No messages yet.</div>';
+    return;
+  }
+  msgs.forEach(m=>{
+    const me = (m.from==='teacher');
+    const row = document.createElement('div');
+    row.className = 'dm-msg' + (me ? ' dm-me' : '');
+    const bubble = document.createElement('div');
+    bubble.className = 'dm-bubble';
+    bubble.textContent = m.text || '';
+    const meta = document.createElement('div');
+    meta.className = 'dm-meta';
+    meta.textContent = (me ? 'You' : 'Student') + ' • ' + formatTime(m.ts||0);
+    row.appendChild(bubble);
+    row.appendChild(meta);
+    wrap.appendChild(row);
+  });
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+async function fetchDM(){
+  if(!MON.student) return;
+  try{
+    const r = await fetch('/api/dm/me?student=' + encodeURIComponent(MON.student));
+    if(!r.ok) return;
+    const j = await r.json();
+    const msgs = j.messages || j || [];
+    // normalize fields (api_dm_me uses role in sqlite version)
+    msgs.forEach(m=>{ if(m.role && !m.from) m.from = m.role; });
+    renderDM(msgs);
+  }catch(_){}
+}
+
+function startDM(){
+  stopDM();
+  fetchDM();
+  DM.timer = setInterval(fetchDM, 3000);
+}
+function stopDM(){
+  if(DM.timer){
+    clearInterval(DM.timer);
+    DM.timer=null;
+  }
+}
+
+$('#dmSend2').onclick = async ()=>{
+  const ta = $('#dmInput2');
+  const text = ta.value.trim();
+  if(!text) return;
+  await fetch('/api/dm/send',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ student: MON.student, text, from:'teacher' })
+  });
+  ta.value='';
+  fetchDM();
+};
 /* -----------------------------------------------------------
    Raise-hand tray (unchanged)
 ----------------------------------------------------------- */
@@ -1315,10 +1456,12 @@ async function openMonitor(student){
   updatePreview();
   monitorDlg.showModal();
   startFollow();
+  startDM();
 }
 
+
 /* Buttons */
-$('#monClose').onclick = ()=>{ stopFollow(); monitorDlg.close(); };
+$('#monClose').onclick = ()=>{ stopFollow(); stopDM(); monitorDlg.close(); };
 $('#monScreenshot').onclick = async ()=>{
   const tabId = MON.activeTabId;
   if(!tabId) return;
