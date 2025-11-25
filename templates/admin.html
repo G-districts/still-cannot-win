@@ -86,8 +86,120 @@
     <small id="msg2" style="margin-left:8px"></small>
   </details>
 </article>
+<h3>Users</h3>
+<article>
+  <details open>
+    <summary>Admin &amp; Teacher Accounts</summary>
+    <p class="mini">
+      Create and manage sign-in accounts for the teacher and admin dashboards.
+      These accounts <b>do not affect</b> student extension logins.
+    </p>
+    <div style="display:flex; flex-wrap:wrap; gap:1rem; align-items:flex-end">
+      <label>
+        Email
+        <input type="email" id="userEmail" placeholder="teacher@example.com">
+      </label>
+      <label>
+        Password
+        <input type="password" id="userPassword" placeholder="Set or reset password">
+      </label>
+      <label>
+        Role
+        <select id="userRole">
+          <option value="teacher">Teacher</option>
+          <option value="admin">Admin</option>
+        </select>
+      </label>
+      <button id="saveUser">Save User</button>
+      <small id="userMsg" style="margin-left:8px"></small>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>Email</th><th>Role</th><th>Actions</th></tr>
+      </thead>
+      <tbody id="usersBody"></tbody>
+    </table>
+  </details>
+</article>
 
 <script>
+  # =========================
+# User management (admins & teachers)
+# =========================
+
+@app.route("/api/users")
+def api_users():
+    """List admin/teacher users (admin only)."""
+    u = current_user()
+    if not u or u.get("role") != "admin":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+
+    con = db(); cur = con.cursor()
+    cur.execute("SELECT email, role FROM users ORDER BY email")
+    rows = [{"email": email, "role": role} for (email, role) in cur.fetchall()]
+    con.close()
+    return jsonify({"ok": True, "users": rows})
+
+
+@app.route("/api/users", methods=["POST"])
+def api_users_save():
+    """Create or update a user (admin or teacher)."""
+    u = current_user()
+    if not u or u.get("role") != "admin":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+
+    body = request.json or {}
+    email = (body.get("email") or "").strip().lower()
+    role = (body.get("role") or "teacher").strip().lower()
+    password = body.get("password")
+
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    if role not in ("teacher", "admin"):
+        return jsonify({"ok": False, "error": "invalid role"}), 400
+
+    con = db(); cur = con.cursor()
+    if password:
+        # Upsert with password
+        cur.execute("""
+            INSERT INTO users(email, password, role)
+            VALUES(?,?,?)
+            ON CONFLICT(email) DO UPDATE SET
+              password=excluded.password,
+              role=excluded.role
+        """, (email, password, role))
+    else:
+        # Update role only
+        cur.execute("UPDATE users SET role=? WHERE email=?", (role, email))
+        if cur.rowcount == 0:
+            con.close()
+            return jsonify({"ok": False, "error": "user not found and no password provided"}), 400
+
+    con.commit(); con.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/users/delete", methods=["POST"])
+def api_users_delete():
+    """Delete a teacher/admin user (admin only)."""
+    u = current_user()
+    if not u or u.get("role") != "admin":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+
+    body = request.json or {}
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+
+    # prevent admin from deleting their own account
+    if email == u.get("email"):
+        return jsonify({"ok": False, "error": "cannot delete yourself"}), 400
+
+    con = db(); cur = con.cursor()
+    cur.execute("DELETE FROM users WHERE email=?", (email,))
+    con.commit(); con.close()
+    return jsonify({"ok": True})
 // Load categories + overrides
 let _latestCategories = [];
 
