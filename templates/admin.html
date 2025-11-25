@@ -21,8 +21,7 @@
 
 <h3>Settings</h3>
 <article>
-  <label>Default Blocked Redirect URL
-    <!-- Safe default if not set in data.settings -->
+  <label>Default Blocked Redirect URL 
     <input id="blocked" type="url" value="{{ data.settings.blocked_redirect|default('https://blocked.gdistrict.org/Gschool%20block') }}">
   </label>
   <label>
@@ -42,9 +41,7 @@
     <thead>
       <tr><th>Category</th><th>Blocked?</th><th>Block Page</th><th>Save</th></tr>
     </thead>
-    <tbody id="cats">
-      <!-- Filled by JS -->
-    </tbody>
+    <tbody id="cats"></tbody>
   </table>
   <small id="catMsg" class="mini"></small>
 </article>
@@ -96,43 +93,42 @@
   </details>
 </article>
 
-<!-- NEW: User management -->
+<!-- SIMPLE USER MANAGEMENT (no loading table) -->
 <h3>Users</h3>
 <article>
   <details open>
     <summary>Admin &amp; Teacher Accounts</summary>
     <p class="mini">
-      Create and manage sign-in accounts for the teacher and admin dashboards.
+      Create / update / delete sign-in accounts for the teacher and admin dashboards.
       These accounts <b>do not</b> affect student extension logins.
     </p>
-    <div style="display:flex; flex-wrap:wrap; gap:1rem; align-items:flex-end">
-      <label>
-        Email
-        <input type="email" id="userEmail" placeholder="teacher@example.com">
-      </label>
-      <label>
-        Password
-        <input type="password" id="userPassword" placeholder="Set or reset password">
-      </label>
-      <label>
-        Role
-        <select id="userRole">
-          <option value="teacher">Teacher</option>
-          <option value="admin">Admin</option>
-        </select>
-      </label>
-      <button id="saveUser">Save User</button>
-      <small id="userMsg" style="margin-left:8px"></small>
-    </div>
 
-    <table>
-      <thead>
-        <tr><th>Email</th><th>Role</th><th>Actions</th></tr>
-      </thead>
-      <tbody id="usersBody">
-        <!-- Filled by JS -->
-      </tbody>
-    </table>
+    <!-- Create / Update -->
+    <h4>Create or Update User</h4>
+    <label>Email
+      <input type="email" id="userEmail" placeholder="teacher@example.com">
+    </label>
+    <label>Password
+      <input type="password" id="userPassword" placeholder="Set or reset password">
+    </label>
+    <label>Role
+      <select id="userRole">
+        <option value="teacher">Teacher</option>
+        <option value="admin">Admin</option>
+      </select>
+    </label>
+    <button id="saveUser">Save User</button>
+    <p id="userMsg" class="mini"></p>
+
+    <hr>
+
+    <!-- Delete -->
+    <h4>Delete User</h4>
+    <label>Email
+      <input type="email" id="deleteEmail" placeholder="teacher@example.com">
+    </label>
+    <button id="deleteUser" class="secondary">Delete User</button>
+    <p id="deleteMsg" class="mini"></p>
   </details>
 </article>
 
@@ -180,18 +176,19 @@ async function refresh(){
     _latestCategories = cats;
 
     if (tbody) {
-      cats.forEach(c=>{
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td><b>${c.name}</b></td>
-          <td><input type="checkbox" ${c.blocked ? 'checked' : ''} data-name="${c.name}" class="blk"></td>
-          <td><input type="url" value="${c.block_url || ''}" data-name="${c.name}" class="bp"></td>
-          <td><button data-name="${c.name}" class="saveCat">Save</button></td>
-        `;
-        tbody.appendChild(tr);
-      });
       if (!cats.length) {
         tbody.innerHTML = '<tr><td colspan="4">No AI categories yet.</td></tr>';
+      } else {
+        cats.forEach(c=>{
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><b>${c.name}</b></td>
+            <td><input type="checkbox" ${c.blocked ? 'checked' : ''} data-name="${c.name}" class="blk"></td>
+            <td><input type="url" value="${c.block_url || ''}" data-name="${c.name}" class="bp"></td>
+            <td><button data-name="${c.name}" class="saveCat">Save</button></td>
+          `;
+          tbody.appendChild(tr);
+        });
       }
     }
 
@@ -229,9 +226,6 @@ async function refresh(){
   } catch (e) {
     console.error('Overrides load error', e);
   }
-
-  // 3) Users
-  await loadUsers();
 }
 refresh();
 
@@ -318,112 +312,66 @@ document.getElementById('saveLists').onclick = async()=>{
   setTimeout(()=>document.getElementById('msg2').textContent='',1500);
 };
 
-// ============ User management (Admin/Teacher) ============
+// ============ SIMPLE USER MANAGEMENT (like login) ============
 
-async function loadUsers(){
-  const tbody = document.getElementById('usersBody');
-  if (!tbody) return;
-  try {
-    const res = await fetch('/api/users');
-    if (!res.ok) {
-      tbody.innerHTML = '<tr><td colspan="3">Unable to load users</td></tr>';
-      return;
-    }
-    const j = await res.json();
-    const users = j.users || [];
-    tbody.innerHTML = '';
-    if (!users.length) {
-      tbody.innerHTML = '<tr><td colspan="3">No users yet. Create one above.</td></tr>';
-      return;
-    }
-    users.forEach(u=>{
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${u.email}</td>
-        <td>
-          <select data-email="${u.email}" class="userRoleSelect">
-            <option value="teacher" ${u.role==='teacher'?'selected':''}>Teacher</option>
-            <option value="admin" ${u.role==='admin'?'selected':''}>Admin</option>
-          </select>
-        </td>
-        <td>
-          <button class="userSave" data-email="${u.email}">Save</button>
-          <button class="userDelete secondary" data-email="${u.email}">Delete</button>
-        </td>
-      `;
-      tbody.appendChild(tr);
-    });
-  } catch (e) {
-    console.error('loadUsers error', e);
-    tbody.innerHTML = '<tr><td colspan="3">Error loading users</td></tr>';
+// Create / update user
+document.getElementById('saveUser').onclick = async ()=>{
+  const email = document.getElementById('userEmail').value.trim().toLowerCase();
+  const password = document.getElementById('userPassword').value;
+  const role = document.getElementById('userRole').value || 'teacher';
+  const msgEl = document.getElementById('userMsg');
+
+  if (!email || !password) {
+    msgEl.textContent = 'Email and password are required';
+    msgEl.style.color = 'crimson';
+    return;
   }
-}
 
-// Create / update user from form
-const saveUserBtn = document.getElementById('saveUser');
-if (saveUserBtn) {
-  saveUserBtn.onclick = async()=>{
-    const emailEl = document.getElementById('userEmail');
-    const pwEl = document.getElementById('userPassword');
-    const roleEl = document.getElementById('userRole');
-    const msgEl = document.getElementById('userMsg');
-    const email = (emailEl.value || '').trim().toLowerCase();
-    const password = pwEl.value || '';
-    const role = roleEl.value || 'teacher';
+  const r = await fetch('/api/users', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ email, password, role })
+  });
 
-    if (!email || !password) {
-      msgEl.textContent = 'Email and password are required';
-      setTimeout(()=>msgEl.textContent='', 2000);
-      return;
-    }
-
-    const body = { email, password, role };
-    const r = await fetch('/api/users',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(body)
-    });
-    msgEl.textContent = r.ok ? 'Saved' : 'Error saving user';
-    setTimeout(()=>msgEl.textContent='', 2000);
-    if (r.ok) {
-      pwEl.value = '';
-      await loadUsers();
-    }
-  };
-}
-
-// Row-level actions: change role / delete
-document.addEventListener('click', async(e)=>{
-  if (e.target.classList.contains('userSave')) {
-    const email = e.target.dataset.email;
-    const sel = document.querySelector('select.userRoleSelect[data-email="'+email+'"]');
-    if (!sel) return;
-    const role = sel.value || 'teacher';
-    const body = { email, role };
-    const r = await fetch('/api/users',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(body)
-    });
-    if (!r.ok) {
-      alert('Error saving user');
-    }
+  if (r.ok) {
+    msgEl.textContent = 'User saved';
+    msgEl.style.color = 'green';
+    document.getElementById('userPassword').value = '';
+  } else {
+    const t = await r.text();
+    msgEl.textContent = 'Error: ' + (t || 'could not save user');
+    msgEl.style.color = 'crimson';
   }
-  if (e.target.classList.contains('userDelete')) {
-    const email = e.target.dataset.email;
-    if (!confirm('Delete user '+email+'? This cannot be undone.')) return;
-    const r = await fetch('/api/users/delete',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ email })
-    });
-    if (!r.ok) {
-      alert('Error deleting user');
-      return;
-    }
-    await loadUsers();
+};
+
+// Delete user
+document.getElementById('deleteUser').onclick = async ()=>{
+  const email = document.getElementById('deleteEmail').value.trim().toLowerCase();
+  const msgEl = document.getElementById('deleteMsg');
+
+  if (!email) {
+    msgEl.textContent = 'Email is required';
+    msgEl.style.color = 'crimson';
+    return;
   }
-});
+
+  if (!confirm('Delete user ' + email + '? This cannot be undone.')) return;
+
+  const r = await fetch('/api/users/delete', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ email })
+  });
+
+  if (r.ok) {
+    msgEl.textContent = 'User deleted (if it existed)';
+    msgEl.style.color = 'green';
+  } else {
+    const t = await r.text();
+    msgEl.textContent = 'Error: ' + (t || 'could not delete user');
+    msgEl.style.color = 'crimson';
+  }
+};
 </script>
 </body>
 </html>
