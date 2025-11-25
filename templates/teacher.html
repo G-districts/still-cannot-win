@@ -70,12 +70,12 @@
   .btn.secondary{ background:#eef2f7!important; color:#0b1b34!important; border:1px solid var(--border) }
   .toggle{display:flex; align-items:center; gap:8px}
 
-  /* Generic toolbar (you already use class="toolbar" in HTML) */
+  /* Generic toolbar */
   .toolbar{
     display:flex;
     align-items:center;
     gap:8px;
-    flex-wrap:wrap; /* wrap contents on narrow widths */
+    flex-wrap:wrap;
   }
 
   /* ----- Tabs row (Screens/Timelines/Screenshots/Call Students) ----- */
@@ -83,7 +83,7 @@
     display:flex;
     gap:8px;
     margin:10px 0 14px;
-    flex-wrap:wrap; /* wrap chips/buttons */
+    flex-wrap:wrap;
   }
   .chip{padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:#fff; cursor:pointer}
   .chip.active{border-color:var(--brand); color:var(--brand); font-weight:700}
@@ -91,7 +91,7 @@
   /* ----- Student grid ----- */
   .grid{
     display:grid;
-    grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); /* was 280px; more flexible on phones */
+    grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
     gap:12px;
   }
   .card{
@@ -105,7 +105,7 @@
   .mini{font-size:12px; color:var(--muted)}
   .pill{font-size:11px; padding:3px 8px; border-radius:999px; border:1px solid var(--border); background:#f7f9fe}
 
-  /* ----- Scenes board (left Allowed / right Blocked) ----- */
+  /* ----- Scenes board ----- */
   .scenes-board{
     display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px;
   }
@@ -175,7 +175,7 @@
     display:flex; flex-direction:column; gap:0; background:#f4f6fb;
     border-top:1px solid var(--border);
     height:100%;
-    min-height:0; /* important for flex on small screens */
+    min-height:0;
   }
   .tabstrip{
     display:flex; gap:6px; padding:8px; overflow:auto; background:#eef3ff; border-bottom:1px solid var(--border);
@@ -199,7 +199,7 @@
     justify-content:center;
     background:#0b1b3410;
     padding:12px;
-    min-height:0; /* allow shrinking when chat visible */
+    min-height:0;
   }
   .monitor-canvas img{width:100%; height:100%; object-fit:contain; border-radius:10px; background:#000}
 
@@ -266,7 +266,6 @@
 
   /* ---------- Responsive layout tweaks ---------- */
 
-  /* Stack layout + nav on top for tablets/phones */
   @media (max-width: 900px){
     .app{
       grid-template-columns:1fr;
@@ -278,7 +277,7 @@
       align-items:center;
       gap:8px;
       padding:8px;
-      overflow-x:auto; /* nav scrolls if needed */
+      overflow-x:auto;
     }
 
     .nav-group{
@@ -301,11 +300,10 @@
     }
 
     .scenes-board{
-      grid-template-columns:1fr; /* Allowed / Blocked stack vertically */
+      grid-template-columns:1fr;
     }
   }
 
-  /* Make monitor dialog + chat fully usable on small phones */
   @media (max-width: 600px){
     #monitorDlg{
       width:100vw;
@@ -343,7 +341,7 @@
     }
 
     .dm-pane{
-      max-height:40vh; /* keep chat from covering entire screen */
+      max-height:40vh;
     }
   }
 </style>
@@ -699,9 +697,6 @@ function escapeHtml(s){ return String(s).replace(/[&<>"]/g, c=>({ '&':'&amp;','<
 
 /* -----------------------------------------------------------
    Persistent cache (per-student, per-tab screenshots)
-   - localStorage key: studentCache_v1
-   - For each student:
-     { screenshot, lastActive, offline, tabshots: { [tabId]: {dataUrl, title, favIconUrl} } }
 ----------------------------------------------------------- */
 const CACHE_KEY = 'studentCache_v1';
 let studentCache = {};
@@ -752,8 +747,6 @@ loadData();
 
 /* -----------------------------------------------------------
    Presence + Smart Screenshot Persistence
-   - If offline OR inactive >5m -> show cached screenshot
-   - Merge incoming tabshots; drop closed tabs
 ----------------------------------------------------------- */
 async function refreshPresence(){
   const res = await fetch('/api/presence'); if(!res.ok) return;
@@ -799,7 +792,7 @@ async function refreshPresence(){
     if(!seen || inactive) setStudentCache(student, {offline:true});
   }
 
- // Render grid
+  // Render grid
   const grid = $('#screenGrid'); grid.innerHTML='';
   const allIds = Array.from(new Set([...Object.keys(studentCache), ...Object.keys(pres)])).sort();
 
@@ -813,11 +806,10 @@ async function refreshPresence(){
 
     const shot=document.createElement('img'); 
     shot.className='shot'; 
-    // choose live if online else cached
     const src = (!isOffline && info.screenshot) ? info.screenshot : (cache.screenshot||'');
     if(src) shot.src = src;
     shot.alt = student + ' screen';
-    shot.onclick = ()=> openMonitor(student); // NEW: browser-like monitor on click
+    shot.onclick = ()=> openMonitor(student);
     card.appendChild(shot);
 
     // top row
@@ -877,7 +869,10 @@ function timeAgo(ts){
   const m = Math.floor(s/60); if(m<60) return m+'m ago';
   const h = Math.floor(m/60); return h+'h ago';
 }
-refreshPresence(); setInterval(refreshPresence, 8000);async function loadYouTubeRules(){
+refreshPresence();
+setInterval(refreshPresence, 8000);
+
+async function loadYouTubeRules(){
   const res=await fetch('/api/youtube_rules');
   if(!res.ok) return;
   const r=await res.json();
@@ -886,7 +881,6 @@ refreshPresence(); setInterval(refreshPresence, 8000);async function loadYouTube
   document.getElementById('ytAllowList').value=(r.allow||[]).join('\n');
   document.getElementById('ytAllowMode').checked=!!r.allow_mode;
 }
-
 loadYouTubeRules();
 
 /* -----------------------------------------------------------
@@ -927,7 +921,13 @@ $('#saveClass').onclick=async()=>{
   await fetch('/api/class/set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({active:$('#active').checked, chat_enabled:$('#chatEnabled').checked})});
   toast('Class settings updated');
 };
-$('#announceBtn').onclick=async()=>{ const msg=prompt('Announcement'); if(msg!=null){ await fetch('/api/announce',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg})}); toast('Announcement sent'); } };
+$('#announceBtn').onclick=async()=>{
+  const msg=prompt('Announcement');
+  if(msg!=null){
+    await fetch('/api/announce',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg})});
+    toast('Announcement sent');
+  }
+};
 $('#openTabsBtn').onclick=()=> $('#openTabsDlg').showModal();
 $('#openTabsClose').onclick=()=> $('#openTabsDlg').close();
 $('#openTabsSend').onclick=async()=>{
@@ -1030,7 +1030,6 @@ $('#stuRestore').onclick=async()=>{
 $('#stuCloseTabs').onclick=async()=>{
   const student=currentStudent(); if(!student){ alert('Pick a student first'); return; }
   await fetch('/api/student/tabs_action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({student, action:'close_tabs'})});
-  // clear all cached tabshots for this student
   if(studentCache[student]){ studentCache[student].tabshots={}; persistCache(); }
   toast('Close requested');
 };
@@ -1042,7 +1041,13 @@ $('#dmSend').onclick=async()=>{
   await fetch('/api/dm/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({student, text, from:'teacher'})});
   $('#dmDlg').close(); toast('DM sent');
 };
-
+/* Enter to send for DM dialog (Shift+Enter = newline) */
+$('#dmInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    $('#dmSend').click();
+  }
+});
 
 /* -------- Direct Chat (DM) in monitor -------- */
 let DM = { timer:null, last:0 };
@@ -1082,7 +1087,7 @@ async function fetchDM(){
     if(!r.ok) return;
     const j = await r.json();
     const msgs = j.messages || j || [];
-    // normalize fields (api_dm_me uses role in sqlite version)
+    // normalize fields
     msgs.forEach(m=>{ if(m.role && !m.from) m.from = m.role; });
     renderDM(msgs);
   }catch(_){}
@@ -1112,8 +1117,16 @@ $('#dmSend2').onclick = async ()=>{
   ta.value='';
   fetchDM();
 };
+/* Enter to send for monitor DM (Shift+Enter = newline) */
+$('#dmInput2').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    $('#dmSend2').click();
+  }
+});
+
 /* -----------------------------------------------------------
-   Raise-hand tray (unchanged)
+   Raise-hand tray
 ----------------------------------------------------------- */
 let seenHands = new Set();
 async function pollHands(){
@@ -1137,7 +1150,7 @@ async function pollHands(){
 setInterval(pollHands, 3000); pollHands();
 
 /* -----------------------------------------------------------
-   Scenes (unchanged endpoints)
+   Scenes
 ----------------------------------------------------------- */
 const scenesSection = $('#scenesSection');
 $('#navScenes').onclick = ()=>{ $$('.nav-btn').forEach(b=>b.classList.remove('active')); $('#navScenes').classList.add('active'); scenesSection.style.display='block'; };
@@ -1266,7 +1279,7 @@ $('#sceneSave').onclick = async ()=>{
   sceneDlg.close(); await loadScenes();
 };
 
-/* Doodles + chat apply (unchanged) */
+/* Doodles + chat apply */
 async function loadDoodles(){
   const res = await fetch('/api/doodle_block');
   if(res.ok){
@@ -1551,9 +1564,8 @@ async function openMonitor(student){
   updatePreview();
   monitorDlg.showModal();
   startFollow();
-  startDM();
+  startDM(); // start DM polling for this specific student
 }
-
 
 /* Buttons */
 $('#monClose').onclick = ()=>{ stopFollow(); stopDM(); monitorDlg.close(); };
@@ -1564,7 +1576,6 @@ $('#monScreenshot').onclick = async ()=>{
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ student:MON.student, command:{type:'screencap', tabId} })
   });
-  // short delay; presence should return updated tabshot
   setTimeout(pullOnePresence, 1200);
 };
 $('#monFullscreen').onclick = ()=>{
@@ -1579,7 +1590,7 @@ followChk.onchange = ()=>{ if(followChk.checked) startFollow(); else stopFollow(
 </script>
 
 <script>
-/* ===== Exam Violations (unchanged) ===== */
+/* ===== Exam Violations ===== */
 async function loadExamViolations(){
   try {
     const r = await fetch("/api/exam_violations");
