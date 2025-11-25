@@ -208,12 +208,13 @@
   .thumbbar img{width:22px; height:22px; border-radius:4px; border:1px solid #e5e8f0; background:#fff}
   .card .status{display:flex; justify-content:space-between; align-items:center}
 
-  /* DM pane inside monitor */
+  /* DM pane inside monitor - made smaller + scrollable */
   .dm-pane{
     border-top:1px solid var(--border);
     background:#fff;
     display:flex;
     flex-direction:column;
+    max-height:220px;          /* cap chat height so screens stay visible */
   }
   .dm-head{
     display:flex;
@@ -226,7 +227,7 @@
   }
   .dm-thread{
     flex:1;
-    overflow:auto;
+    overflow-y:auto;           /* scroll messages instead of growing */
     padding:12px;
   }
   .dm-msg{
@@ -262,6 +263,7 @@
     flex:1;
     resize:vertical;
     min-height:42px;
+    max-height:80px;           /* prevent input from getting huge */
   }
 
   /* ---------- Responsive layout tweaks ---------- */
@@ -341,7 +343,7 @@
     }
 
     .dm-pane{
-      max-height:40vh;
+      max-height:40vh;         /* mobile: still capped, relative to screen */
     }
   }
 </style>
@@ -731,6 +733,10 @@ const state = {
   presence: {}
 };
 
+let CLASS_STATE = {
+  active: true
+};
+
 /* -----------------------------------------------------------
    Load initial class data
 ----------------------------------------------------------- */
@@ -742,6 +748,8 @@ async function loadData(){
   $('#active').checked=j.classes.period1.active;
   $('#classTitle').textContent = j.classes.period1.name || 'MEGACLASS';
   $('#updateTime').textContent = 'Update Time';
+
+  CLASS_STATE.active = !!j.classes.period1.active;  // track current active state
 }
 loadData();
 
@@ -914,13 +922,53 @@ function openStudent(student, info){
 
 /* -----------------------------------------------------------
    Session buttons / class settings
+   (includes chat reset when session ends)
 ----------------------------------------------------------- */
 $('#saveClass').onclick=async()=>{
-  await fetch('/api/class/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({class_id:'period1',key:'focus_mode',value:$('#focus').checked})});
-  await fetch('/api/class/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({class_id:'period1',key:'paused',value:$('#paused').checked})});
-  await fetch('/api/class/set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({active:$('#active').checked, chat_enabled:$('#chatEnabled').checked})});
+  const wasActive = !!CLASS_STATE.active;
+  const nowActive = $('#active').checked;
+
+  await fetch('/api/class/toggle',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({class_id:'period1',key:'focus_mode',value:$('#focus').checked})
+  });
+  await fetch('/api/class/toggle',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({class_id:'period1',key:'paused',value:$('#paused').checked})
+  });
+  await fetch('/api/class/set',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({active:nowActive, chat_enabled:$('#chatEnabled').checked})
+  });
+
+  CLASS_STATE.active = nowActive;
+
+  // If class just ended, reset chat history UI (and optionally backend)
+  if (wasActive && !nowActive) {
+    try {
+      // Optional backend hook – safe if not implemented
+      await fetch('/api/dm/reset_session',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'}
+      });
+    } catch(e) {
+      console.warn('DM reset failed or not implemented', e);
+    }
+
+    const dmThread = document.getElementById('dmThread');
+    if (dmThread) {
+      dmThread.innerHTML = '<div class="muted">No messages yet.</div>';
+    }
+    const dmInput = document.getElementById('dmInput2');
+    if (dmInput) dmInput.value = '';
+  }
+
   toast('Class settings updated');
 };
+
 $('#announceBtn').onclick=async()=>{
   const msg=prompt('Announcement');
   if(msg!=null){
