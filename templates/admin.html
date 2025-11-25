@@ -86,120 +86,8 @@
     <small id="msg2" style="margin-left:8px"></small>
   </details>
 </article>
-<h3>Users</h3>
-<article>
-  <details open>
-    <summary>Admin &amp; Teacher Accounts</summary>
-    <p class="mini">
-      Create and manage sign-in accounts for the teacher and admin dashboards.
-      These accounts <b>do not affect</b> student extension logins.
-    </p>
-    <div style="display:flex; flex-wrap:wrap; gap:1rem; align-items:flex-end">
-      <label>
-        Email
-        <input type="email" id="userEmail" placeholder="teacher@example.com">
-      </label>
-      <label>
-        Password
-        <input type="password" id="userPassword" placeholder="Set or reset password">
-      </label>
-      <label>
-        Role
-        <select id="userRole">
-          <option value="teacher">Teacher</option>
-          <option value="admin">Admin</option>
-        </select>
-      </label>
-      <button id="saveUser">Save User</button>
-      <small id="userMsg" style="margin-left:8px"></small>
-    </div>
-
-    <table>
-      <thead>
-        <tr><th>Email</th><th>Role</th><th>Actions</th></tr>
-      </thead>
-      <tbody id="usersBody"></tbody>
-    </table>
-  </details>
-</article>
 
 <script>
-  # =========================
-# User management (admins & teachers)
-# =========================
-
-@app.route("/api/users")
-def api_users():
-    """List admin/teacher users (admin only)."""
-    u = current_user()
-    if not u or u.get("role") != "admin":
-        return jsonify({"ok": False, "error": "forbidden"}), 403
-
-    con = db(); cur = con.cursor()
-    cur.execute("SELECT email, role FROM users ORDER BY email")
-    rows = [{"email": email, "role": role} for (email, role) in cur.fetchall()]
-    con.close()
-    return jsonify({"ok": True, "users": rows})
-
-
-@app.route("/api/users", methods=["POST"])
-def api_users_save():
-    """Create or update a user (admin or teacher)."""
-    u = current_user()
-    if not u or u.get("role") != "admin":
-        return jsonify({"ok": False, "error": "forbidden"}), 403
-
-    body = request.json or {}
-    email = (body.get("email") or "").strip().lower()
-    role = (body.get("role") or "teacher").strip().lower()
-    password = body.get("password")
-
-    if not email:
-        return jsonify({"ok": False, "error": "email required"}), 400
-    if role not in ("teacher", "admin"):
-        return jsonify({"ok": False, "error": "invalid role"}), 400
-
-    con = db(); cur = con.cursor()
-    if password:
-        # Upsert with password
-        cur.execute("""
-            INSERT INTO users(email, password, role)
-            VALUES(?,?,?)
-            ON CONFLICT(email) DO UPDATE SET
-              password=excluded.password,
-              role=excluded.role
-        """, (email, password, role))
-    else:
-        # Update role only
-        cur.execute("UPDATE users SET role=? WHERE email=?", (role, email))
-        if cur.rowcount == 0:
-            con.close()
-            return jsonify({"ok": False, "error": "user not found and no password provided"}), 400
-
-    con.commit(); con.close()
-    return jsonify({"ok": True})
-
-
-@app.route("/api/users/delete", methods=["POST"])
-def api_users_delete():
-    """Delete a teacher/admin user (admin only)."""
-    u = current_user()
-    if not u or u.get("role") != "admin":
-        return jsonify({"ok": False, "error": "forbidden"}), 403
-
-    body = request.json or {}
-    email = (body.get("email") or "").strip().lower()
-    if not email:
-        return jsonify({"ok": False, "error": "email required"}), 400
-
-    # prevent admin from deleting their own account
-    if email == u.get("email"):
-        return jsonify({"ok": False, "error": "cannot delete yourself"}), 400
-
-    con = db(); cur = con.cursor()
-    cur.execute("DELETE FROM users WHERE email=?", (email,))
-    con.commit(); con.close()
-    return jsonify({"ok": True})
 // Load categories + overrides
 let _latestCategories = [];
 
@@ -207,11 +95,13 @@ function updateScheduleForm() {
   const cats = _latestCategories || [];
   const sel = document.getElementById('schedCategory');
   if (!sel) return;
+
   let selectedName = sel.value;
   if (!selectedName && cats.length) {
     selectedName = cats[0].name;
     sel.value = selectedName;
   }
+
   const cat = cats.find(c => c.name === selectedName) || {};
   const sched = cat.schedule || null;
 
@@ -240,8 +130,8 @@ async function refresh(){
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><b>${c.name}</b></td>
-      <td><input type="checkbox" ${c.blocked?'checked':''} data-name="${c.name}" class="blk"></td>
-      <td><input type="url" value="${c.block_url||''}" data-name="${c.name}" class="bp"></td>
+      <td><input type="checkbox" ${c.blocked ? 'checked' : ''} data-name="${c.name}" class="blk"></td>
+      <td><input type="url" value="${c.block_url || ''}" data-name="${c.name}" class="bp"></td>
       <td><button data-name="${c.name}" class="saveCat">Save</button></td>
     `;
     tbody.appendChild(tr);
@@ -269,8 +159,8 @@ async function refresh(){
   document.getElementById('allowlist').value = (o.allowlist || []).join("\n");
   document.getElementById('blocklist').value = (o.teacher_blocks || []).join("\n");
 }
-refresh();
 
+refresh();
 
 // Save global settings
 document.getElementById('save').onclick = async()=>{
@@ -279,7 +169,11 @@ document.getElementById('save').onclick = async()=>{
     chat_enabled: document.getElementById('chat').checked,
     passcode: document.getElementById('passcode').value
   };
-  const r = await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const r = await fetch('/api/settings',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(body)
+  });
   document.getElementById('msg').textContent = r.ok?'Saved':'Error';
   setTimeout(()=>document.getElementById('msg').textContent='',1500);
 };
@@ -291,12 +185,15 @@ document.addEventListener('click', async(e)=>{
     const blocked = document.querySelector('.blk[data-name="'+name+'"]').checked;
     const block_url = document.querySelector('.bp[data-name="'+name+'"]').value;
     const body = {name, blocked, block_url};
-    const r = await fetch('/api/ai/categories',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const r = await fetch('/api/ai/categories',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body)
+    });
     alert(r.ok ? 'Saved!' : 'Error saving category');
     refresh();
   }
 });
-
 
 // Save schedule for selected category
 const schedCategoryEl = document.getElementById('schedCategory');
@@ -331,13 +228,20 @@ if (schedCategoryEl && saveScheduleBtn) {
 
 // Save manual overrides
 document.getElementById('saveLists').onclick = async()=>{
-  const allowlist = document.getElementById('allowlist').value.split("\n").map(s=>s.trim()).filter(Boolean);
-  const teacher_blocks = document.getElementById('blocklist').value.split("\n").map(s=>s.trim()).filter(Boolean);
+  const allowlist = document.getElementById('allowlist').value
+    .split("\n").map(s=>s.trim()).filter(Boolean);
+  const teacher_blocks = document.getElementById('blocklist').value
+    .split("\n").map(s=>s.trim()).filter(Boolean);
   const body = {allowlist, teacher_blocks};
-  const r = await fetch('/api/overrides',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const r = await fetch('/api/overrides',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(body)
+  });
   document.getElementById('msg2').textContent = r.ok?'Saved':'Error';
   setTimeout(()=>document.getElementById('msg2').textContent='',1500);
 };
 </script>
 </body>
 </html>
+
