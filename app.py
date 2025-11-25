@@ -1285,7 +1285,8 @@ def api_dm_send():
     if u["role"] == "student":
         room = f"dm:{u['email']}"
         role = "student"; user_id = u["email"]
-    elif u["role"] == "teacher":
+    elif u["role"] in ("teacher", "admin"):
+        # allow admins to send DMs same as teachers
         student = body.get("student")
         if not student:
             return jsonify({"ok": False, "error": "no student"}), 400
@@ -1295,8 +1296,10 @@ def api_dm_send():
         return jsonify({"ok": False, "error": "forbidden"}), 403
 
     con = db(); cur = con.cursor()
-    cur.execute("INSERT INTO chat_messages(room,user_id,role,text,ts) VALUES(?,?,?,?,?)",
-                (room, user_id, role, text, int(time.time())))
+    cur.execute(
+        "INSERT INTO chat_messages(room,user_id,role,text,ts) VALUES(?,?,?,?,?)",
+        (room, user_id, role, text, int(time.time())),
+    )
     con.commit(); con.close()
     return jsonify({"ok": True})
 
