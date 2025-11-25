@@ -21,11 +21,17 @@
 
 <h3>Settings</h3>
 <article>
-  <label>Default Blocked Redirect URL 
-    <input id="blocked" type="url" value="{{ data.settings.blocked_redirect }}">
+  <label>Default Blocked Redirect URL
+    <!-- Safe default if not set in data.settings -->
+    <input id="blocked" type="url" value="{{ data.settings.blocked_redirect|default('https://blocked.gdistrict.org/Gschool%20block') }}">
   </label>
-  <label><input id="chat" type="checkbox" {{ 'checked' if data.settings.chat_enabled else '' }}> Enable Chat</label>
-  <label>Extension Passcode <input id="passcode" type="password" placeholder="admin1234"></label>
+  <label>
+    <input id="chat" type="checkbox" {{ 'checked' if data.settings.chat_enabled|default(False) else '' }}>
+    Enable Chat
+  </label>
+  <label>Extension Passcode
+    <input id="passcode" type="password" placeholder="admin1234">
+  </label>
   <button id="save">Save</button>
   <small id="msg" style="margin-left:8px"></small>
 </article>
@@ -36,8 +42,11 @@
     <thead>
       <tr><th>Category</th><th>Blocked?</th><th>Block Page</th><th>Save</th></tr>
     </thead>
-    <tbody id="cats"></tbody>
+    <tbody id="cats">
+      <!-- Filled by JS -->
+    </tbody>
   </table>
+  <small id="catMsg" class="mini"></small>
 </article>
 
 <h4>Category Schedules (auto block/unblock)</h4>
@@ -120,13 +129,15 @@
       <thead>
         <tr><th>Email</th><th>Role</th><th>Actions</th></tr>
       </thead>
-      <tbody id="usersBody"></tbody>
+      <tbody id="usersBody">
+        <!-- Filled by JS -->
+      </tbody>
     </table>
   </details>
 </article>
 
 <script>
-// Load categories + overrides
+// ============ Categories & Schedules ============
 let _latestCategories = [];
 
 function updateScheduleForm() {
@@ -156,48 +167,70 @@ function updateScheduleForm() {
 }
 
 async function refresh(){
-  // categories from AI API
-  const res = await fetch('/api/ai/categories');
-  const j = await res.json();
-  const cats = j.categories || [];
-  _latestCategories = cats;
-
+  const catMsg = document.getElementById('catMsg');
   const tbody = document.getElementById('cats');
-  tbody.innerHTML = '';
-  cats.forEach(c=>{
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><b>${c.name}</b></td>
-      <td><input type="checkbox" ${c.blocked ? 'checked' : ''} data-name="${c.name}" class="blk"></td>
-      <td><input type="url" value="${c.block_url || ''}" data-name="${c.name}" class="bp"></td>
-      <td><button data-name="${c.name}" class="saveCat">Save</button></td>
-    `;
-    tbody.appendChild(tr);
-  });
+  if (tbody) tbody.innerHTML = '';
 
-  // Populate schedule category dropdown
-  const sel = document.getElementById('schedCategory');
-  if (sel) {
-    const prev = sel.value;
-    sel.innerHTML = '';
-    cats.forEach(c=>{
-      const opt = document.createElement('option');
-      opt.value = c.name;
-      opt.textContent = c.name;
-      sel.appendChild(opt);
-    });
-    if (prev && cats.some(c=>c.name===prev)) {
-      sel.value = prev;
+  // 1) Categories from AI API (if available)
+  try {
+    const res = await fetch('/api/ai/categories');
+    if (!res.ok) throw new Error('AI categories unavailable');
+    const j = await res.json();
+    const cats = j.categories || [];
+    _latestCategories = cats;
+
+    if (tbody) {
+      cats.forEach(c=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><b>${c.name}</b></td>
+          <td><input type="checkbox" ${c.blocked ? 'checked' : ''} data-name="${c.name}" class="blk"></td>
+          <td><input type="url" value="${c.block_url || ''}" data-name="${c.name}" class="bp"></td>
+          <td><button data-name="${c.name}" class="saveCat">Save</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+      if (!cats.length) {
+        tbody.innerHTML = '<tr><td colspan="4">No AI categories yet.</td></tr>';
+      }
     }
-    updateScheduleForm();
+
+    // Populate schedule category dropdown
+    const sel = document.getElementById('schedCategory');
+    if (sel) {
+      const prev = sel.value;
+      sel.innerHTML = '';
+      cats.forEach(c=>{
+        const opt = document.createElement('option');
+        opt.value = c.name;
+        opt.textContent = c.name;
+        sel.appendChild(opt);
+      });
+      if (prev && cats.some(c=>c.name===prev)) {
+        sel.value = prev;
+      }
+      updateScheduleForm();
+    }
+
+    if (catMsg) catMsg.textContent = '';
+  } catch (err) {
+    console.warn('Category load failed', err);
+    if (tbody && !tbody.innerHTML) {
+      tbody.innerHTML = '<tr><td colspan="4">AI categorization not available.</td></tr>';
+    }
+    if (catMsg) catMsg.textContent = 'AI categories are temporarily unavailable.';
   }
 
-  // ✅ load global overrides
-  const o = await (await fetch('/api/overrides')).json();
-  document.getElementById('allowlist').value = (o.allowlist || []).join("\n");
-  document.getElementById('blocklist').value = (o.teacher_blocks || []).join("\n");
+  // 2) Global overrides
+  try {
+    const o = await (await fetch('/api/overrides')).json();
+    document.getElementById('allowlist').value = (o.allowlist || []).join("\n");
+    document.getElementById('blocklist').value = (o.teacher_blocks || []).join("\n");
+  } catch (e) {
+    console.error('Overrides load error', e);
+  }
 
-  // ✅ load users
+  // 3) Users
   await loadUsers();
 }
 refresh();
@@ -214,7 +247,7 @@ document.getElementById('save').onclick = async()=>{
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify(body)
   });
-  document.getElementById('msg').textContent = r.ok?'Saved':'Error';
+  document.getElementById('msg').textContent = r.ok ? 'Saved' : 'Error';
   setTimeout(()=>document.getElementById('msg').textContent='',1500);
 };
 
@@ -222,8 +255,11 @@ document.getElementById('save').onclick = async()=>{
 document.addEventListener('click', async(e)=>{
   if(e.target.classList.contains('saveCat')){
     const name = e.target.dataset.name;
-    const blocked = document.querySelector('.blk[data-name="'+name+'"]').checked;
-    const block_url = document.querySelector('.bp[data-name="'+name+'"]').value;
+    const chk = document.querySelector('.blk[data-name="'+name+'"]');
+    const inp = document.querySelector('.bp[data-name="'+name+'"]');
+    if (!chk || !inp) return;
+    const blocked = chk.checked;
+    const block_url = inp.value;
     const body = {name, blocked, block_url};
     const r = await fetch('/api/ai/categories',{
       method:'POST',
@@ -278,13 +314,12 @@ document.getElementById('saveLists').onclick = async()=>{
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify(body)
   });
-  document.getElementById('msg2').textContent = r.ok?'Saved':'Error';
+  document.getElementById('msg2').textContent = r.ok ? 'Saved' : 'Error';
   setTimeout(()=>document.getElementById('msg2').textContent='',1500);
 };
 
-// -----------------------------
-// User management (Admin/Teacher)
-// -----------------------------
+// ============ User management (Admin/Teacher) ============
+
 async function loadUsers(){
   const tbody = document.getElementById('usersBody');
   if (!tbody) return;
