@@ -425,6 +425,71 @@ def api_present_diag(room):
         "cand_t": {k: len(v) for k, v in (r.get("cand_t") or {}).items()},
     })
 
+# =========================
+# User Admin (create/list/delete)
+# =========================
+@app.route("/api/users", methods=["GET", "POST"])
+def api_users():
+    u = current_user()
+    # only admins can manage users
+    if not u or u.get("role") != "admin":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+
+    con = db()
+    cur = con.cursor()
+
+    if request.method == "GET":
+        # (not used by the simplified admin.html, but handy for future)
+        cur.execute("SELECT email, role FROM users ORDER BY email ASC")
+        rows = cur.fetchall()
+        con.close()
+        return jsonify({"ok": True, "users": [{"email": r[0], "role": r[1]} for r in rows]})
+
+    # POST: create or update a user
+    body = request.json or {}
+    email = (body.get("email") or "").strip().lower()
+    password = body.get("password") or ""
+    role = (body.get("role") or "teacher").strip().lower()
+
+    if not email:
+        con.close()
+        return jsonify({"ok": False, "error": "email required"}), 400
+    if not password:
+        # allow role-only updates if needed
+        cur.execute("SELECT email FROM users WHERE email=?", (email,))
+        if not cur.fetchone():
+            con.close()
+            return jsonify({"ok": False, "error": "password required for new user"}), 400
+
+    if password:
+        cur.execute(
+            "REPLACE INTO users (email, password, role) VALUES (?,?,?)",
+            (email, password, role)
+        )
+    else:
+        cur.execute("UPDATE users SET role=? WHERE email=?", (role, email))
+
+    con.commit()
+    con.close()
+    return jsonify({"ok": True})
+
+@app.route("/api/users/delete", methods=["POST"])
+def api_users_delete():
+    u = current_user()
+    if not u or u.get("role") != "admin":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+
+    body = request.json or {}
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+
+    con = db()
+    cur = con.cursor()
+    cur.execute("DELETE FROM users WHERE email=?", (email,))
+    con.commit()
+    con.close()
+    return jsonify({"ok": True})
 
 # =========================
 # Auth
