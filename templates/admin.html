@@ -20,8 +20,7 @@
 </nav>
 
 <h3>Settings</h3>
-<article>
-  <label>Default Blocked Redirect URL 
+<article  <label>Default Blocked Redirect URL 
     <input id="blocked" type="url" value="{{ data.settings.blocked_redirect|default('https://blocked.gdistrict.org/Gschool%20block') }}">
   </label>
   <label>
@@ -30,6 +29,13 @@
   </label>
   <label>Extension Passcode
     <input id="passcode" type="password" placeholder="admin1234">
+  </label>
+  <label>
+    <input id="bypassEnabled" type="checkbox" {{ 'checked' if data.settings.bypass_enabled|default(False) else '' }}>
+    Enable Bypass Override on Block Pages
+  </label>
+  <label>Bypass Code
+    <input id="bypassCode" type="password" value="{{ data.settings.bypass_code|default('') }}" placeholder="e.g. secret123">
   </label>
   <button id="save">Save</button>
   <small id="msg" style="margin-left:8px"></small>
@@ -234,7 +240,9 @@ document.getElementById('save').onclick = async()=>{
   const body = {
     blocked_redirect: document.getElementById('blocked').value,
     chat_enabled: document.getElementById('chat').checked,
-    passcode: document.getElementById('passcode').value
+    passcode: document.getElementById('passcode').value,
+    bypass_enabled: document.getElementById('bypassEnabled').checked,
+    bypass_code: document.getElementById('bypassCode').value
   };
   const r = await fetch('/api/settings',{
     method:'POST',
