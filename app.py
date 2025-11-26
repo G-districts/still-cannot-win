@@ -252,6 +252,140 @@ def _save_scenes(obj):
     with open(SCENES_PATH, "w", encoding="utf-8") as f:
         json.dump(obj, f, indent=2)
 
+# =========================
+# AI CATEGORY ROUTES (BluePrint)
+# =========================
+
+from flask import Blueprint, request, jsonify
+from urllib.parse import urlencode
+import time
+import json
+import re
+
+from app import load_data, save_data, ensure_keys, current_user
+
+ai = Blueprint("ai", __name__)
+
+# ------------------------------------------
+# GET AI categories
+# ------------------------------------------
+@ai.route("/api/ai/categories", methods=["GET"])
+def ai_get_categories():
+    u = current_user()
+    if not u or u["role"] != "admin":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+        
+    d = ensure_keys(load_data())
+
+    out = []
+    for name, c in d.get("categories", {}).items():
+        out.append({
+            "id": name,
+            "name": name,
+            "urls": c.get("urls", []),
+            "ai_labels": c.get("ai_labels", []),
+            "blockPage": c.get("blockPage", "")
+        })
+
+    return jsonify({"ok": True, "categories": out})
+
+
+# ------------------------------------------
+# SAVE an AI category (used by Admin)
+# ------------------------------------------
+@ai.route("/api/ai/category/save", methods=["POST"])
+def ai_category_save():
+    u = current_user()
+    if not u or u["role"] != "admin":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+
+    body = request.json or {}
+    name = body.get("name")
+    urls = body.get("urls") or []
+    bp = body.get("blockPage") or ""
+
+    if not name:
+        return jsonify({"ok": False, "error": "name required"}), 400
+
+    d = ensure_keys(load_data())
+    d["categories"][name] = {
+        "urls": urls,
+        "ai_labels": body.get("ai_labels", []),
+        "blockPage": bp
+    }
+
+    save_data(d)
+    return jsonify({"ok": True})
+
+
+# ------------------------------------------
+# DELETE AI category
+# ------------------------------------------
+@ai.route("/api/ai/delete", methods=["POST"])
+def ai_category_delete():
+    u = current_user()
+    if not u or u["role"] != "admin":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+
+    body = request.json or {}
+    name = body.get("name")
+
+    d = ensure_keys(load_data())
+    if name in d["categories"]:
+        del d["categories"][name]
+        save_data(d)
+
+    return jsonify({"ok": True})
+
+
+# ------------------------------------------
+# EXTENSION → classify URL against categories
+# ------------------------------------------
+@ai.route("/api/ai/classify", methods=["POST"])
+def ai_classify():
+    body = request.json or {}
+    url = (body.get("url") or "").strip()
+
+    if not url:
+        return jsonify({"ok": False, "error": "no url"}), 400
+
+    d = ensure_keys(load_data())
+    cats = d.get("categories", {})
+
+    matched = None
+    reason = None
+
+    for name, cat in cats.items():
+        for pat in cat.get("urls", []):
+            if pat and pat.lower() in url.lower():
+                matched = name
+                reason = f"Matched pattern: {pat}"
+                break
+        if matched:
+            break
+
+    if not matched:
+        return jsonify({"ok": True, "blocked": False})
+
+    block_page = cats[matched].get("blockPage") or "category_block"
+
+    params = {
+        "url": url,
+        "policy": matched,
+        "rule": matched,
+        "path": block_page,
+        "bypass": 1
+    }
+
+    block_url = "https://blocked.gdistrict.org/Gschool%20block?" + urlencode(params)
+
+    return jsonify({
+        "ok": True,
+        "blocked": True,
+        "category": matched,
+        "reason": reason,
+        "redirect": block_url
+    })
 
 # =========================
 # Pages
