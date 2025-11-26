@@ -2096,16 +2096,6 @@ def api_notify():
 
 
 # =========================
-# AI (optional blueprint)
-# =========================
-try:
-    import ai_routes
-    app.register_blueprint(ai_routes.ai)
-except Exception as _e:
-    print("AI routes not loaded:", _e)
-
-
-# =========================
 # Off-task alert (student)
 # =========================
 @app.route("/api/off_task", methods=["POST"])
