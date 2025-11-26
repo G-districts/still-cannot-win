@@ -560,8 +560,18 @@ def api_settings():
         set_setting("bypass_enabled", bool(b["bypass_enabled"]))
     if "bypass_code" in b:
         d["settings"]["bypass_code"] = b["bypass_code"]
+    if "bypass_ttl_minutes" in b:
+        try:
+            ttl = int(b["bypass_ttl_minutes"])
+        except Exception:
+            ttl = 10
+        if ttl < 1:
+            ttl = 1
+        if ttl > 1440:
+            ttl = 1440
+        d["settings"]["bypass_ttl_minutes"] = ttl
     save_data(d)
-    return jsonify({"ok": True, "settings": d["settings"]})
+    return jsonify({"ok": True})urn jsonify({"ok": True, "settings": d["settings"]})
 
 @app.route("/api/categories", methods=["POST"])
 def api_categories():
@@ -998,7 +1008,8 @@ def api_policy():
         "pending": pending,
         "ts": int(time.time()),
         "scenes": {"current": current},
-        "bypass_enabled": bool(d.get("settings", {}).get("bypass_enabled", False))
+        "bypass_enabled": bool(d.get("settings", {}).get("bypass_enabled", False)),
+        "bypass_ttl_minutes": int(d.get("settings", {}).get("bypass_ttl_minutes", 10))
     }
     return jsonify(resp)
 
