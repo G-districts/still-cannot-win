@@ -554,6 +554,12 @@ def api_settings():
         set_setting("chat_enabled", bool(b["chat_enabled"]))
     if "passcode" in b and b["passcode"]:
         d["settings"]["passcode"] = b["passcode"]
+    # New: global bypass settings
+    if "bypass_enabled" in b:
+        d["settings"]["bypass_enabled"] = bool(b["bypass_enabled"])
+        set_setting("bypass_enabled", bool(b["bypass_enabled"]))
+    if "bypass_code" in b:
+        d["settings"]["bypass_code"] = b["bypass_code"]
     save_data(d)
     return jsonify({"ok": True, "settings": d["settings"]})
 
@@ -991,7 +997,8 @@ def api_policy():
         "chat_enabled": d.get("settings", {}).get("chat_enabled", False),
         "pending": pending,
         "ts": int(time.time()),
-        "scenes": {"current": current}
+        "scenes": {"current": current},
+        "bypass_enabled": bool(d.get("settings", {}).get("bypass_enabled", False))
     }
     return jsonify(resp)
 
@@ -1876,3 +1883,21 @@ if __name__ == "__main__":
     # Ensure data.json exists and is sane on boot
     save_data(ensure_keys(load_data()))
     app.run(host="0.0.0.0", port=5000, debug=True)
+
+
+@app.route("/api/bypass", methods=["POST"])
+def api_bypass():
+    d = ensure_keys(load_data())
+    b = request.json or {}
+    code = (b.get("code") or "").strip()
+    url = (b.get("url") or "").strip()
+    user = (b.get("user") or "").strip()
+    settings = d.get("settings", {})
+    if not settings.get("bypass_enabled"):
+        return jsonify({"ok": False, "allow": False, "error": "disabled"}), 403
+    expected = (settings.get("bypass_code") or "").strip()
+    if not expected or expected != code:
+        return jsonify({"ok": False, "allow": False, "error": "invalid"}), 403
+    # In the future we could persist per-url allowlist here,
+    # but for now just acknowledge the bypass.
+    return jsonify({"ok": True, "allow": True})
