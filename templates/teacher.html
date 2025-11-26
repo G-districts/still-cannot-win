@@ -208,64 +208,6 @@
   .thumbbar img{width:22px; height:22px; border-radius:4px; border:1px solid #e5e8f0; background:#fff}
   .card .status{display:flex; justify-content:space-between; align-items:center}
 
-  /* DM pane inside monitor - made smaller + scrollable */
-  .dm-pane{
-    border-top:1px solid var(--border);
-    background:#fff;
-    display:flex;
-    flex-direction:column;
-    max-height:220px;          /* cap chat height so screens stay visible */
-  }
-  .dm-head{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    padding:10px 12px;
-    border-bottom:1px solid var(--border);
-    background:#f7f9fc;
-    font-weight:700;
-  }
-  .dm-thread{
-    flex:1;
-    overflow-y:auto;           /* scroll messages instead of growing */
-    padding:12px;
-  }
-  .dm-msg{
-    margin:6px 0;
-    max-width:88%;
-  }
-  .dm-me{
-    margin-left:auto;
-    text-align:right;
-  }
-  .dm-bubble{
-    display:inline-block;
-    padding:8px 10px;
-    border-radius:10px;
-    background:#eef3ff;
-    border:1px solid var(--border);
-  }
-  .dm-me .dm-bubble{
-    background:#dbeafe;
-  }
-  .dm-meta{
-    font-size:11px;
-    color:#667085;
-    margin-top:2px;
-  }
-  .dm-compose{
-    display:flex;
-    gap:8px;
-    padding:10px;
-    border-top:1px solid var(--border);
-  }
-  .dm-compose textarea{
-    flex:1;
-    resize:vertical;
-    min-height:42px;
-    max-height:80px;           /* prevent input from getting huge */
-  }
-
   /* ---------- Responsive layout tweaks ---------- */
 
   @media (max-width: 900px){
@@ -341,10 +283,74 @@
       flex:1;
       min-height:0;
     }
+  }
 
-    .dm-pane{
-      max-height:40vh;         /* mobile: still capped, relative to screen */
-    }
+  /* ===== BIG DM POPUP ===== */
+  #dmOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.35);
+    display: none;          /* toggled via JS */
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+  }
+
+  #dmModal {
+    background: #fff;
+    width: min(700px, 95vw);
+    height: min(550px, 85vh);
+    display: flex;
+    flex-direction: column;
+    border-radius: 10px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+    padding: 1rem;
+  }
+
+  #dmHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+
+  #dmMessages {
+    flex: 1;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 0.5rem;
+    background: #fafafa;
+    overflow-y: auto;
+    font-size: 0.9rem;
+  }
+
+  .dmRow {
+    margin-bottom: 0.4rem;
+    display: flex;
+  }
+
+  .dmRow.me {
+    justify-content: flex-end;
+  }
+
+  .dmBubble {
+    max-width: 80%;
+    padding: 0.35rem 0.6rem;
+    border-radius: 10px;
+    line-height: 1.35;
+    background: #00000006;
+    border: 1px solid #ddd;
+  }
+
+  .dmRow.me .dmBubble {
+    background: #2563eb22;
+    border: 1px solid #2563eb55;
+  }
+
+  .dmMeta {
+    font-size: 0.7rem;
+    opacity: 0.6;
+    margin-top: 2px;
   }
 </style>
 </head>
@@ -598,14 +604,6 @@
       <div class="monitor-canvas">
         <img id="monPreview" src="" alt="preview">
       </div>
-      <div class="dm-pane">
-        <div class="dm-head">Direct Chat</div>
-        <div class="dm-thread" id="dmThread"><div class="muted">No messages yet.</div></div>
-        <div class="dm-compose">
-          <textarea id="dmInput2" placeholder="Type a private message"></textarea>
-          <button class="btn" id="dmSend2">Send</button>
-        </div>
-      </div>
     </div>
   </div>
 </dialog>
@@ -626,7 +624,7 @@
   </div>
 </dialog>
 
-<!-- DM -->
+<!-- DM small dialog (not used for main chat anymore, but kept harmless) -->
 <dialog id="dmDlg">
   <h4>Message Student</h4>
   <textarea id="dmInput" rows="3" placeholder="Type a private message"></textarea>
@@ -677,6 +675,26 @@
     </div>
   </div>
 </dialog>
+
+<!-- BIG DM CHAT POPUP -->
+<div id="dmOverlay">
+  <div id="dmModal">
+    <header id="dmHeader">
+      <h3 id="dmTitle">Chat</h3>
+      <button id="dmCloseBtn" class="secondary">✕</button>
+    </header>
+    <div id="dmMessages"></div>
+    <form id="dmForm" autocomplete="off" style="margin-top:0.5rem">
+      <label style="margin-top:0.25rem; width:100%">
+        <span>Message</span>
+        <textarea id="dmInputBig" rows="2" placeholder="Type a message…"></textarea>
+      </label>
+      <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.5rem">
+        <button type="submit" class="btn">Send</button>
+      </div>
+    </form>
+  </div>
+</div>
 
 <script>
 /* -----------------------------------------------------------
@@ -862,9 +880,11 @@ async function refreshPresence(){
     actions.className='row'; actions.style.justifyContent='flex-end'; actions.style.gap='6px';
     const perStu=document.createElement('button'); perStu.className='btn secondary'; perStu.textContent='Controls';
     perStu.onclick=()=>{ $('#perStudentDlg').showModal(); $('#studentSelect').value=student; };
+    const chat=document.createElement('button'); chat.className='btn secondary'; chat.textContent='Chat';
+    chat.onclick=()=> openDM(student, student);
     const view=document.createElement('button'); view.className='btn'; view.textContent='View';
     view.onclick=()=> openMonitor(student);
-    actions.appendChild(perStu); actions.appendChild(view);
+    actions.appendChild(perStu); actions.appendChild(chat); actions.appendChild(view);
     card.appendChild(actions);
 
     grid.appendChild(card);
@@ -922,7 +942,6 @@ function openStudent(student, info){
 
 /* -----------------------------------------------------------
    Session buttons / class settings
-   (includes chat reset when session ends)
 ----------------------------------------------------------- */
 $('#saveClass').onclick=async()=>{
   const wasActive = !!CLASS_STATE.active;
@@ -945,26 +964,6 @@ $('#saveClass').onclick=async()=>{
   });
 
   CLASS_STATE.active = nowActive;
-
-  // If class just ended, reset chat history UI (and optionally backend)
-  if (wasActive && !nowActive) {
-    try {
-      // Optional backend hook – safe if not implemented
-      await fetch('/api/dm/reset_session',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'}
-      });
-    } catch(e) {
-      console.warn('DM reset failed or not implemented', e);
-    }
-
-    const dmThread = document.getElementById('dmThread');
-    if (dmThread) {
-      dmThread.innerHTML = '<div class="muted">No messages yet.</div>';
-    }
-    const dmInput = document.getElementById('dmInput2');
-    if (dmInput) dmInput.value = '';
-  }
 
   toast('Class settings updated');
 };
@@ -1081,7 +1080,14 @@ $('#stuCloseTabs').onclick=async()=>{
   if(studentCache[student]){ studentCache[student].tabshots={}; persistCache(); }
   toast('Close requested');
 };
-$('#stuDM').onclick=()=>$('#dmDlg').showModal();
+/* Per-student DM now opens BIG popup */
+$('#stuDM').onclick=()=>{
+  const student = currentStudent();
+  if(!student){ alert('Pick a student first'); return; }
+  openDM(student, student);
+};
+
+/* Small DM dialog (still works but not primary anymore) */
 $('#dmClose').onclick=()=>$('#dmDlg').close();
 $('#dmSend').onclick=async()=>{
   const text=$('#dmInput').value.trim(); if(!text){ alert('Type a message'); return; }
@@ -1094,82 +1100,6 @@ $('#dmInput').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     $('#dmSend').click();
-  }
-});
-
-/* -------- Direct Chat (DM) in monitor -------- */
-let DM = { timer:null, last:0 };
-
-function formatTime(ts){
-  try{ return new Date(ts*1000).toLocaleTimeString(); }catch(_){ return ''; }
-}
-
-function renderDM(msgs){
-  const wrap = $('#dmThread');
-  wrap.innerHTML = '';
-  if(!msgs || !msgs.length){
-    wrap.innerHTML = '<div class="muted">No messages yet.</div>';
-    return;
-  }
-  msgs.forEach(m=>{
-    const me = (m.from==='teacher');
-    const row = document.createElement('div');
-    row.className = 'dm-msg' + (me ? ' dm-me' : '');
-    const bubble = document.createElement('div');
-    bubble.className = 'dm-bubble';
-    bubble.textContent = m.text || '';
-    const meta = document.createElement('div');
-    meta.className = 'dm-meta';
-    meta.textContent = (me ? 'You' : 'Student') + ' • ' + formatTime(m.ts||0);
-    row.appendChild(bubble);
-    row.appendChild(meta);
-    wrap.appendChild(row);
-  });
-  wrap.scrollTop = wrap.scrollHeight;
-}
-
-async function fetchDM(){
-  if(!MON.student) return;
-  try{
-    const r = await fetch('/api/dm/me?student=' + encodeURIComponent(MON.student));
-    if(!r.ok) return;
-    const j = await r.json();
-    const msgs = j.messages || j || [];
-    // normalize fields
-    msgs.forEach(m=>{ if(m.role && !m.from) m.from = m.role; });
-    renderDM(msgs);
-  }catch(_){}
-}
-
-function startDM(){
-  stopDM();
-  fetchDM();
-  DM.timer = setInterval(fetchDM, 3000);
-}
-function stopDM(){
-  if(DM.timer){
-    clearInterval(DM.timer);
-    DM.timer=null;
-  }
-}
-
-$('#dmSend2').onclick = async ()=>{
-  const ta = $('#dmInput2');
-  const text = ta.value.trim();
-  if(!text) return;
-  await fetch('/api/dm/send',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ student: MON.student, text, from:'teacher' })
-  });
-  ta.value='';
-  fetchDM();
-};
-/* Enter to send for monitor DM (Shift+Enter = newline) */
-$('#dmInput2').addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    $('#dmSend2').click();
   }
 });
 
@@ -1612,11 +1542,10 @@ async function openMonitor(student){
   updatePreview();
   monitorDlg.showModal();
   startFollow();
-  startDM(); // start DM polling for this specific student
 }
 
 /* Buttons */
-$('#monClose').onclick = ()=>{ stopFollow(); stopDM(); monitorDlg.close(); };
+$('#monClose').onclick = ()=>{ stopFollow(); monitorDlg.close(); };
 $('#monScreenshot').onclick = async ()=>{
   const tabId = MON.activeTabId;
   if(!tabId) return;
@@ -1635,6 +1564,120 @@ document.addEventListener('fullscreenchange', ()=>{
 followChk.onchange = ()=>{ if(followChk.checked) startFollow(); else stopFollow(); };
 
 /* ==================== end Browser-like Monitor ==================== */
+</script>
+
+<script>
+/* ===== BIG DM POPUP LOGIC ===== */
+let currentDmStudent = null;
+let currentDmDisplayName = null;
+let dmPollTimer = null;
+
+const dmOverlay = document.getElementById('dmOverlay');
+const dmTitle   = document.getElementById('dmTitle');
+const dmMessages= document.getElementById('dmMessages');
+const dmCloseBtn= document.getElementById('dmCloseBtn');
+const dmForm    = document.getElementById('dmForm');
+const dmInputBig= document.getElementById('dmInputBig');
+
+/* Open big chat for a student */
+function openDM(studentEmail, displayName){
+  currentDmStudent = studentEmail;
+  currentDmDisplayName = displayName || studentEmail;
+
+  if (dmTitle) dmTitle.textContent = 'Chat with ' + currentDmDisplayName;
+  if (dmOverlay) dmOverlay.style.display = 'flex';
+
+  loadDmMessages();
+
+  if (dmPollTimer) clearInterval(dmPollTimer);
+  dmPollTimer = setInterval(loadDmMessages, 3000);
+}
+
+function closeDM(){
+  if (dmOverlay) dmOverlay.style.display = 'none';
+  if (dmPollTimer){
+    clearInterval(dmPollTimer);
+    dmPollTimer = null;
+  }
+  currentDmStudent = null;
+  currentDmDisplayName = null;
+}
+
+if (dmCloseBtn) dmCloseBtn.addEventListener('click', closeDM);
+if (dmOverlay) dmOverlay.addEventListener('click', e=>{
+  if (e.target === dmOverlay) closeDM();
+});
+
+async function loadDmMessages(){
+  if (!currentDmStudent || !dmMessages) return;
+  try{
+    const res = await fetch('/api/dm/me?student=' + encodeURIComponent(currentDmStudent));
+    if (!res.ok) return;
+    const msgs = await res.json(); // array: [{from, user, text, ts}, ...]
+
+    dmMessages.innerHTML = '';
+    if (!msgs.length){
+      dmMessages.innerHTML = '<div class="muted">No messages yet.</div>';
+      return;
+    }
+
+    msgs.forEach(m=>{
+      const isTeacher = m.from === 'teacher' || m.role === 'teacher';
+      const row = document.createElement('div');
+      row.className = 'dmRow ' + (isTeacher ? 'me' : 'them');
+
+      const bubble = document.createElement('div');
+      bubble.className = 'dmBubble';
+
+      const textEl = document.createElement('div');
+      textEl.textContent = m.text || '';
+
+      const meta = document.createElement('div');
+      meta.className = 'dmMeta';
+      const d = new Date((m.ts || 0) * 1000);
+      meta.textContent = (isTeacher ? 'You · ' : 'Student · ') + d.toLocaleTimeString();
+
+      bubble.appendChild(textEl);
+      bubble.appendChild(meta);
+      row.appendChild(bubble);
+      dmMessages.appendChild(row);
+    });
+
+    dmMessages.scrollTop = dmMessages.scrollHeight;
+  }catch(e){
+    console.error('DM load error', e);
+  }
+}
+
+if (dmForm){
+  dmForm.addEventListener('submit', async e=>{
+    e.preventDefault();
+    if (!currentDmStudent) return;
+    const text = (dmInputBig.value || '').trim();
+    if (!text) return;
+
+    try{
+      const res = await fetch('/api/dm/send',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ student: currentDmStudent, text })
+      });
+      if (res.ok){
+        dmInputBig.value = '';
+        await loadDmMessages();
+      }
+    }catch(err){
+      console.error('DM send error', err);
+    }
+  });
+
+  dmInputBig.addEventListener('keydown', e=>{
+    if (e.key === 'Enter' && !e.shiftKey){
+      e.preventDefault();
+      dmForm.requestSubmit();
+    }
+  });
+}
 </script>
 
 <script>
