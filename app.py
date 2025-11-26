@@ -5,7 +5,7 @@
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for
 from flask_cors import CORS
 import json, os, time, sqlite3, traceback, uuid, re
-from urllib.parse import urlparse, urlencode
+from urllib.parse import urlparse
 from datetime import datetime
 from collections import defaultdict
 
@@ -265,6 +265,15 @@ import re
 from app import load_data, save_data, ensure_keys, current_user
 
 ai = Blueprint("ai", __name__)
+
+# =========================
+# AI (optional blueprint)
+# =========================
+try:
+    import ai_routes
+    app.register_blueprint(ai_routes.ai)
+except Exception as _e:
+    print("AI routes not loaded:", _e)
 
 # ------------------------------------------
 # GET AI categories
